@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-
+import operator
 import datetime
 import math
-import operator
 import optparse
 import os
 import re
@@ -64,9 +63,15 @@ else:
 
 from peewee import *
 from peewee import IndexMetadata
+<<<<<<< HEAD
+from peewee import OperationalError
+from playhouse.dataset import DataSet, Table
+=======
 from peewee import sqlite3
 from playhouse.dataset import DataSet
+>>>>>>> origin/editable
 from playhouse.migrate import migrate
+from sqlite_web.utils import get_fields_for_columns
 
 
 CUR_DIR = os.path.realpath(os.path.dirname(__file__))
@@ -77,9 +82,11 @@ SECRET_KEY = 'sqlite-database-browser-0.1.0'
 
 app = Flask(
     __name__,
+    template_folder=os.path.join(CUR_DIR, 'templates'),
     static_folder=os.path.join(CUR_DIR, 'static'),
-    template_folder=os.path.join(CUR_DIR, 'templates'))
+)
 app.config.from_object(__name__)
+
 dataset = None
 migrator = None
 
@@ -94,6 +101,7 @@ ViewMetadata = namedtuple('ViewMetadata', ('name', 'sql'))
 #
 # Database helpers.
 #
+
 
 class SqliteDataSet(DataSet):
     @property
@@ -184,9 +192,11 @@ class SqliteDataSet(DataSet):
 # Flask views.
 #
 
+
 @app.route('/')
 def index():
     return render_template('index.html', sqlite=sqlite3)
+
 
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
@@ -197,10 +207,12 @@ def login():
         flash('The password you entered is incorrect.', 'danger')
     return render_template('login.html')
 
+
 @app.route('/logout/', methods=['GET'])
 def logout():
     session.pop('authorized', None)
     return redirect(url_for('login'))
+
 
 def require_table(fn):
     @wraps(fn)
@@ -209,6 +221,7 @@ def require_table(fn):
             abort(404)
         return fn(table, *args, **kwargs)
     return inner
+
 
 @app.route('/create-table/', methods=['POST'])
 def table_create():
@@ -219,6 +232,7 @@ def table_create():
 
     dataset[table]
     return redirect(url_for('table_import', table=table))
+
 
 @app.route('/<table>/')
 @require_table
@@ -241,10 +255,12 @@ def table_structure(table):
         table_sql=table_sql,
         triggers=dataset.get_triggers(table))
 
+
 def get_request_data():
     if request.method == 'POST':
         return request.form
     return request.args
+
 
 @app.route('/<table>/add-column/', methods=['GET', 'POST'])
 @require_table
@@ -285,6 +301,7 @@ def add_column(table):
         name=name,
         table=table)
 
+
 @app.route('/<table>/drop-column/', methods=['GET', 'POST'])
 @require_table
 def drop_column(table):
@@ -308,6 +325,7 @@ def drop_column(table):
         column_names=column_names,
         name=name,
         table=table)
+
 
 @app.route('/<table>/rename-column/', methods=['GET', 'POST'])
 @require_table
@@ -337,6 +355,7 @@ def rename_column(table):
         rename_to=rename_to,
         table=table)
 
+
 @app.route('/<table>/add-index/', methods=['GET', 'POST'])
 @require_table
 def add_index(table):
@@ -365,6 +384,7 @@ def add_index(table):
         table=table,
         unique=unique)
 
+
 @app.route('/<table>/drop-index/', methods=['GET', 'POST'])
 @require_table
 def drop_index(table):
@@ -387,6 +407,7 @@ def drop_index(table):
         index_names=index_names,
         name=name,
         table=table)
+
 
 @app.route('/<table>/drop-trigger/', methods=['GET', 'POST'])
 @require_table
@@ -411,6 +432,7 @@ def drop_trigger(table):
         name=name,
         table=table)
 
+
 @app.route('/<table>/content/')
 @require_table
 def table_content(table):
@@ -428,17 +450,35 @@ def table_content(table):
 
     previous_page = page_number - 1 if page_number > 1 else None
     next_page = page_number + 1 if page_number < total_pages else None
-
     query = ds_table.all().paginate(page_number, rows_per_page)
 
+    offset = (page_number-1) * rows_per_page
+    rowid_query_tmpl = (
+        'SELECT rowid FROM {table} {order_by} LIMIT {limit} OFFSET {offset};'
+    )
+
     ordering = request.args.get('ordering')
+    order_by_clause = ''
     if ordering:
         field = ds_table.model_class._meta.columns[ordering.lstrip('-')]
+        order_by_clause = 'ORDER BY {field} '.format(field=field.name)
         if ordering.startswith('-'):
             field = field.desc()
+            order_by_clause += 'DESC'
+        else:
+            order_by_clause += 'ASC'
         query = query.order_by(field)
 
+    rowid_query = rowid_query_tmpl.format(
+        table=table,
+        order_by=order_by_clause,
+        limit=rows_per_page,
+        offset=offset,
+    )
+    rowids = list(map(operator.itemgetter(0),
+                  dataset.query(rowid_query).fetchall()))
     field_names = ds_table.columns
+    fields = get_fields_for_columns(dataset.get_columns(table))
     columns = [f.column_name for f in ds_table.model_class._meta.sorted_fields]
 
     table_sql = dataset.query(
@@ -454,10 +494,43 @@ def table_content(table):
         ordering=ordering,
         page=page_number,
         previous_page=previous_page,
-        query=query,
+        query=zip(rowids, query),
+        fields=fields,
         table=table,
         total_pages=total_pages,
-        total_rows=total_rows)
+        total_rows=total_rows,
+    )
+
+
+@app.route('/<table>/get/<rowid>', methods=['GET'])
+def item_get(table, rowid):
+    query = 'SELECT * FROM {table} WHERE rowid = ?'.format(table=table)
+    cursor = dataset.query(query, [rowid])
+    return jsonify({'fields': cursor.fetchone()})
+
+
+@app.route('/<table>/update/<rowid>', methods=['POST'])
+@require_table
+def item_update(table, rowid):
+    query_tmpl = ('UPDATE {table} SET {fields_update} '
+                  'WHERE rowid = {rowid}')
+    fields_update = ', '.join([
+        '{field} = ?'.format(field=field)
+        for field, _ in request.form.items()
+    ])
+    values = [value for _, value in request.form.items()]
+    query = query_tmpl.format(
+        table=table,
+        fields_update=fields_update,
+        rowid=rowid,
+    )
+    try:
+        cursor = dataset.query(query, values)
+    except (OperationalError, ) as e:
+        flash(str(e), category='danger')
+
+    return redirect(url_for('table_content', table=table))
+
 
 @app.route('/<table>/query/', methods=['GET', 'POST'])
 @require_table
@@ -501,6 +574,7 @@ def table_query(table):
         table=table,
         table_sql=table_sql)
 
+
 @app.route('/table-definition/', methods=['POST'])
 def set_table_definition_preference():
     key = 'show'
@@ -510,6 +584,18 @@ def set_table_definition_preference():
     elif key in session:
         del session[key]
     return jsonify({key: show})
+
+
+@app.route('/<table>/delete/<rowid>', methods=['GET'])
+@require_table
+def item_delete(table, rowid):
+    query = 'DELETE FROM {table} WHERE rowid = ?'.format(table=table)
+    try:
+        cursor = dataset.query(query, [rowid])
+    except (OperationalError,) as e:
+        return jsonify({'error': 1, 'message': str(e)})
+    return jsonify({'error': 0})
+
 
 def export(table, sql, export_format):
     model_class = dataset[table].model_class
@@ -535,6 +621,7 @@ def export(table, sql, export_format):
     response.headers['Expires'] = 0
     response.headers['Pragma'] = 'public'
     return response
+
 
 @app.route('/<table>/import/', methods=['GET', 'POST'])
 @require_table
@@ -577,6 +664,7 @@ def table_import(table):
         strict=strict,
         table=table)
 
+
 @app.route('/<table>/drop/', methods=['GET', 'POST'])
 @require_table
 def drop_table(table):
@@ -588,6 +676,7 @@ def drop_table(table):
 
     return render_template('drop_table.html', table=table)
 
+
 @app.template_filter('format_index')
 def format_index(index_sql):
     split_regex = re.compile(r'\bon\b', re.I)
@@ -596,6 +685,7 @@ def format_index(index_sql):
 
     create, definition = split_regex.split(index_sql)
     return '\nON '.join((create.strip(), definition.strip()))
+
 
 @app.template_filter('value_filter')
 def value_filter(value, max_length=50):
@@ -616,8 +706,10 @@ def value_filter(value, max_length=50):
                         value)
     return value
 
+
 column_re = re.compile('(.+?)\((.+)\)', re.S)
 column_split_re = re.compile(r'(?:[^,(]|\([^)]*\))+')
+
 
 def _format_create_table(sql):
     create_table, column_list = column_re.search(sql).groups()
@@ -628,6 +720,7 @@ def _format_create_table(sql):
         create_table,
         ',\n'.join(columns))
 
+
 @app.template_filter()
 def format_create_table(sql):
     try:
@@ -635,9 +728,11 @@ def format_create_table(sql):
     except:
         return sql
 
+
 @app.template_filter('highlight')
 def highlight_filter(data):
     return Markup(syntax_highlight(data))
+
 
 def get_query_images():
     accum = []
@@ -654,6 +749,7 @@ def get_query_images():
 # Flask application helpers.
 #
 
+
 @app.context_processor
 def _general():
     return {
@@ -661,13 +757,16 @@ def _general():
         'login_required': bool(app.config.get('PASSWORD')),
     }
 
+
 @app.context_processor
 def _now():
     return {'now': datetime.datetime.now()}
 
+
 @app.before_request
 def _connect_db():
     dataset.connect()
+
 
 @app.teardown_request
 def _close_db(exc):
@@ -677,6 +776,7 @@ def _close_db(exc):
 #
 # Script options.
 #
+
 
 def get_option_parser():
     parser = optparse.OptionParser()
@@ -717,10 +817,12 @@ def get_option_parser():
         help='Open database in read-only mode.')
     return parser
 
+
 def die(msg, exit_code=1):
     sys.stderr.write('%s\n' % msg)
     sys.stderr.flush()
     sys.exit(exit_code)
+
 
 def open_browser_tab(host, port):
     url = 'http://%s:%s/' % (host, port)
@@ -733,6 +835,7 @@ def open_browser_tab(host, port):
     thread.daemon = True
     thread.start()
 
+
 def install_auth_handler(password):
     app.config['PASSWORD'] = password
 
@@ -744,6 +847,8 @@ def install_auth_handler(password):
             session['next_url'] = request.path
             return redirect(url_for('login'))
 
+<<<<<<< HEAD
+=======
 def initialize_app(filename, read_only=False, password=None):
     global dataset
     global migrator
@@ -769,8 +874,12 @@ def initialize_app(filename, read_only=False, password=None):
 
     migrator = dataset._migrator
     dataset.close()
+>>>>>>> origin/editable
 
 def main():
+    global dataset
+    global migrator
+
     # This function exists to act as a console script entry-point.
     parser = get_option_parser()
     options, args = parser.parse_args()
@@ -787,11 +896,26 @@ def main():
             else:
                 break
 
+<<<<<<< HEAD
+    if options.debug:
+        app.jinja_env.auto_reload = True
+        app.jinja_env.cache = None
+
+    if password:
+        install_auth_handler(password)
+
+    db_file = args[0]
+    dataset = SqliteDataSet('sqlite:///%s' % db_file, bare_fields=True)
+    migrator = dataset._migrator
+    dataset.close()
+=======
     # Initialize the dataset instance and (optionally) authentication handler.
     initialize_app(args[0], options.read_only, password)
 
+>>>>>>> origin/editable
     if options.browser:
         open_browser_tab(options.host, options.port)
+
     app.run(host=options.host, port=options.port, debug=options.debug)
 
 
