@@ -63,13 +63,9 @@ else:
 
 from peewee import *
 from peewee import IndexMetadata
-<<<<<<< HEAD
 from peewee import OperationalError
-from playhouse.dataset import DataSet, Table
-=======
-from peewee import sqlite3
 from playhouse.dataset import DataSet
->>>>>>> origin/editable
+from peewee import sqlite3
 from playhouse.migrate import migrate
 from sqlite_web.utils import get_fields_for_columns
 
@@ -847,8 +843,6 @@ def install_auth_handler(password):
             session['next_url'] = request.path
             return redirect(url_for('login'))
 
-<<<<<<< HEAD
-=======
 def initialize_app(filename, read_only=False, password=None):
     global dataset
     global migrator
@@ -874,7 +868,6 @@ def initialize_app(filename, read_only=False, password=None):
 
     migrator = dataset._migrator
     dataset.close()
->>>>>>> origin/editable
 
 def main():
     global dataset
@@ -896,7 +889,6 @@ def main():
             else:
                 break
 
-<<<<<<< HEAD
     if options.debug:
         app.jinja_env.auto_reload = True
         app.jinja_env.cache = None
@@ -908,11 +900,9 @@ def main():
     dataset = SqliteDataSet('sqlite:///%s' % db_file, bare_fields=True)
     migrator = dataset._migrator
     dataset.close()
-=======
     # Initialize the dataset instance and (optionally) authentication handler.
     initialize_app(args[0], options.read_only, password)
 
->>>>>>> origin/editable
     if options.browser:
         open_browser_tab(options.host, options.port)
 
