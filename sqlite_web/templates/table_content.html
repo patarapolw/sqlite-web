@@ -1,7 +1,13 @@
 {% extends "base_table.html" %}
 
+{% block extra_head %}
+  <link rel=stylesheet type=text/css href="{{ url_for('static', filename='css/table-resizable.css') }}" />
+{% endblock %}
+
 {% block extra_scripts %}
   {{ super() }}
+  <script type="text/javascript" src="{{ url_for('static', filename='js/colResizable-1.6.min.js') }}"></script>
+  <script type="text/javascript" src="{{ url_for('static', filename='js/table-resizable.js') }}"></script>
   <script type="text/javascript">
     $(function() {
       var valueToggles = $('a.toggle-value');
@@ -41,6 +47,7 @@
 
 {% block inner_content %}
   {# add filters #}
+  <div class="table-container">
   <table class="table table-striped">
     <thead>
       <tr>
@@ -78,19 +85,41 @@
             </td>
           {% endfor %}
         </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        {% for row in query %}
+          <tr>
+            {% for field in field_names %}
+              {% set value = row[field] %}
+              <td>
+                {% if value is none %}
+                  NULL
+                {% else %}
+                  {{ value|value_filter|safe }}
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   <nav>
     <ul class="pagination">
       <li class="{% if not previous_page %}disabled {% endif %}page-item">
-        <a class="page-link" href="{{ url_for('table_content', table=table, page=previous_page, ordering=ordering) }}">&larr; Previous</a>
+        <a class="page-link" href="{{ url_for('table_content', table=table, page=1, ordering=ordering) }}">&laquo;</a>
+      </li>
+      <li class="{% if not previous_page %}disabled {% endif %}page-item">
+        <a class="page-link" href="{{ url_for('table_content', table=table, page=previous_page, ordering=ordering) }}">&lsaquo;</a>
       </li>
       <li class="page-item disabled">
         <span class="page-link">Page {{ page }} / {{ total_pages }}</span>
       </li>
       <li class="{% if not next_page %}disabled {% endif %}page-item">
-        <a class="page-link" href="{{ url_for('table_content', table=table, page=next_page, ordering=ordering) }}">Next &rarr;</a>
+        <a class="page-link" href="{{ url_for('table_content', table=table, page=next_page, ordering=ordering) }}">&rsaquo;</a>
+      </li>
+      <li class="{% if not next_page %}disabled {% endif %}page-item">
+        <a class="page-link" href="{{ url_for('table_content', table=table, page=total_pages, ordering=ordering) }}">&raquo;</a>
       </li>
     </ul>
   </nav>
