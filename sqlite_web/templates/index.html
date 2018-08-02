@@ -6,8 +6,14 @@
   <table class="table table-striped">
     <tbody>
       <tr>
+        <th>Sqlite</th>
+        <td>{{ sqlite.sqlite_version }}</td>
+      </tr>
+      <tr>
         <th>Filename</th>
-        <td>{{ dataset.filename }}</td>
+        <td>{{ dataset.filename }}
+          {% if dataset.is_readonly %}<strong>read-only</strong>{% endif %}
+        </td>
       </tr>
       <tr>
         <th>Size</th>

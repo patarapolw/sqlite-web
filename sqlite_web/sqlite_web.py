@@ -63,8 +63,13 @@ else:
 
 from peewee import *
 from peewee import IndexMetadata
+<<<<<<< HEAD
 from peewee import OperationalError
 from playhouse.dataset import DataSet, Table
+=======
+from peewee import sqlite3
+from playhouse.dataset import DataSet
+>>>>>>> origin/editable
 from playhouse.migrate import migrate
 from sqlite_web.utils import get_fields_for_columns
 
@@ -101,7 +106,15 @@ ViewMetadata = namedtuple('ViewMetadata', ('name', 'sql'))
 class SqliteDataSet(DataSet):
     @property
     def filename(self):
-        return os.path.realpath(dataset._database.database)
+        db_file = dataset._database.database
+        if db_file.startswith('file:'):
+            db_file = db_file[5:]
+        return os.path.realpath(db_file.rsplit('?', 1)[0])
+
+    @property
+    def is_readonly(self):
+        db_file = dataset._database.database
+        return db_file.endswith('?mode=ro')
 
     @property
     def base_name(self):
@@ -182,7 +195,7 @@ class SqliteDataSet(DataSet):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', sqlite=sqlite3)
 
 
 @app.route('/login/', methods=['GET', 'POST'])
@@ -796,6 +809,12 @@ def get_option_parser():
         action='store_true',
         dest='prompt_password',
         help='Prompt for password to access database browser.')
+    parser.add_option(
+        '-r',
+        '--read-only',
+        action='store_true',
+        dest='read_only',
+        help='Open database in read-only mode.')
     return parser
 
 
@@ -828,6 +847,34 @@ def install_auth_handler(password):
             session['next_url'] = request.path
             return redirect(url_for('login'))
 
+<<<<<<< HEAD
+=======
+def initialize_app(filename, read_only=False, password=None):
+    global dataset
+    global migrator
+
+    if password:
+        install_auth_handler(password)
+
+    if read_only:
+        if sys.version_info < (3, 4, 0):
+            die('Python 3.4.0 or newer is required for read-only access.')
+        if peewee_version < (3, 5, 1):
+            die('Peewee 3.5.1 or newer is required for read-only access.')
+        db = SqliteDatabase('file:%s?mode=ro' % filename, uri=True)
+        try:
+            db.connect()
+        except OperationalError:
+            die('Unable to open database file in read-only mode. Ensure that '
+                'the database exists in order to use read-only mode.')
+        db.close()
+        dataset = SqliteDataSet(db, bare_fields=True)
+    else:
+        dataset = SqliteDataSet('sqlite:///%s' % filename, bare_fields=True)
+
+    migrator = dataset._migrator
+    dataset.close()
+>>>>>>> origin/editable
 
 def main():
     global dataset
@@ -849,6 +896,7 @@ def main():
             else:
                 break
 
+<<<<<<< HEAD
     if options.debug:
         app.jinja_env.auto_reload = True
         app.jinja_env.cache = None
@@ -860,6 +908,11 @@ def main():
     dataset = SqliteDataSet('sqlite:///%s' % db_file, bare_fields=True)
     migrator = dataset._migrator
     dataset.close()
+=======
+    # Initialize the dataset instance and (optionally) authentication handler.
+    initialize_app(args[0], options.read_only, password)
+
+>>>>>>> origin/editable
     if options.browser:
         open_browser_tab(options.host, options.port)
 
